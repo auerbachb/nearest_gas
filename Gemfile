@@ -15,6 +15,10 @@ gem 'jbuilder', '~> 2.5'
 
 group :development, :test do
   gem 'byebug', platforms: [:mri, :mingw, :x64_mingw]
+  gem 'factory_bot_rails', '~> 4.8.2'
+  gem 'faker', '~> 1.8.4'
+  gem 'rspec-rails', '~> 3.7.1'
+  gem 'webmock'
 end
 
 group :development do

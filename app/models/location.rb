@@ -1,9 +1,9 @@
 class Location < ApplicationRecord
   validates :lat, :lng, :street_address, :city, :state, :postal_code, presence: true
-  has_one :gas_station, class_name: 'Location', foreign_key: 'location_id'
+  attr_accessor :location_id
 
   def self.find_or_create_location(lat, lng)
-    query = "SELECT * FROM locations WHERE lat like '#{lat.to_f.truncate(4)}%' and lng like '#{lng.to_f.truncate(4)}%';"
+    query = "SELECT * FROM locations WHERE lat like '#{lat.to_f.round(4)}%' and lng like '#{lng.to_f.round(4)}%'"
     location = Location.find_by_sql(query).first
 
     if location.nil?
@@ -17,31 +17,50 @@ class Location < ApplicationRecord
   end
 
   def find_or_create_gas_station(lat, lng)
-    gs_coords = gas_station_coordinates(lat, lng)
-    location = Location.find_or_create_location(gs_coords['lat'], gs_coords['lng'])
-
-    if location.gas_station? && location.stale?
-      location.touch
+    gas_station = self.gas_station
+    if gas_station
+      address_info = gas_station.stale? ? coordinates_to_address(lat, lng) : {}
+      location = Location.update(address_info).first
     else
+      gs_coords = gas_station_coordinates(lat, lng)
+      location = Location.find_or_create_location(gs_coords['lat'], gs_coords['lng'])
+
       location.gas = true
     end
 
     self.gas_station = location
+    location.gas_station = location
 
     location
   end
 
-  def self.coordinates_to_address(lat, lng)
-    build_address(reverse_geocode_api_call(lat, lng))
+  def gas_station?
+    gas
   end
 
-  def self.build_address(components)
-    components = select_components(components)
+  def gas_station=(location)
+    self.update!(location_id: location.id)
+  end
+
+  def gas_station
+    Location.find(self.location_id)
+  rescue
+    nil
+  end
+
+  def stale?
+    self.updated_at + 1.week < DateTime.now
+  end
+
+  private
+
+  def self.coordinates_to_address(lat, lng)
+    components = select_components(reverse_geocode_api_call(lat, lng))
     {
-      street_address: "#{components[0]} #{components[1]}",
-      city: components[2],
-      state: components[3],
-      postal_code: "#{components[4]}-#{components[5]}"
+        street_address: "#{components[0]} #{components[1]}",
+        city: components[2],
+        state: components[3],
+        postal_code: "#{components[4]}-#{components[5]}"
     }
   end
 
@@ -51,23 +70,15 @@ class Location < ApplicationRecord
     components.map! { |component| component['types'].first == 'administrative_area_level_1' ? component['short_name'] : component['long_name'] }
   end
 
-  def gas_station?
-    gas
-  end
-
-  def stale?
-    self.updated_at + 1.week < DateTime.now
-  end
-
-  private
-
   def gas_station_coordinates(lat, lng)
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=#{lat},#{lng}&type=gas_station&rankby=distance&key=#{Rails.application.secrets[:GOOGLE_PLACES_API_KEY]}"
-    JSON.parse(RestClient.get(url))['results'].first['geometry']['location']
+    json = JSON.parse(RestClient.get(url))
+    json['results'].any? ? json['results'].first['geometry']['location'] : raise(Exception.new('No gas stations found'))
   end
 
   def self.reverse_geocode_api_call(lat, lng)
     url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=#{lat},#{lng}&key=#{Rails.application.secrets[:GOOGLE_GEOCODE_API_KEY]}"
-    JSON.parse(RestClient.get(url))['results'].first['address_components']
+    json = JSON.parse(RestClient.get(url))
+    json['results'].any? ? json['results'].first['address_components'] : raise(Exception.new('No geocoded information found'))
   end
 end

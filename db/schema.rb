@@ -19,7 +19,7 @@ ActiveRecord::Schema.define(version: 20171025180918) do
     t.string "city", null: false
     t.string "state", null: false
     t.string "postal_code", null: false
-    t.boolean "gas"
+    t.boolean "gas", default: false
     t.integer "location_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false

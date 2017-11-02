@@ -8,8 +8,8 @@ class CreateLocations < ActiveRecord::Migration[5.1]
       t.string  :city, null: false
       t.string  :state, null: false
       t.string  :postal_code, null: false
-      t.boolean :gas
-      t.belongs_to  :location
+      t.boolean :gas, default: false
+      t.references :location, foreign_key: true
       t.timestamps
     end
   end
